@@ -20,7 +20,7 @@ else
 endif
 
 all: dep build
-dep: dep-tensorflow dep-js dep-go
+dep: dep-tensorflow dep-go
 build: generate build-js build-go
 install: install-bin install-assets
 test: test-js test-go
@@ -80,7 +80,7 @@ clean-local-config:
 dep-list:
 	go list -u -m -json all | go-mod-outdated -direct
 dep-js:
-	(cd frontend &&	npm install --silent --legacy-peer-deps && npm audit fix)
+	(cd frontend &&	npm install --legacy-peer-deps && npm audit fix)
 dep-go:
 	go build -v ./...
 dep-upgrade:

@@ -1,106 +1,8 @@
-FROM ubuntu:20.10 as build
-
-LABEL maintainer="Michael Mayer <michael@liquidbytes.net>"
-
-ARG BUILD_TAG
-
-ENV DEBIAN_FRONTEND noninteractive
-
-# Configure apt
-RUN echo 'Acquire::Retries "10";' > /etc/apt/apt.conf.d/80retry && \
-    echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/80recommends && \
-    echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/80suggests && \
-    echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/80forceyes && \
-    echo 'APT::Get::Fix-Missing "true";' > /etc/apt/apt.conf.d/80fixmissin
-
-# Install dev / build dependencies
-RUN apt-get update && apt-get upgrade && \
-    apt-get install \
-    build-essential \
-    curl \
-    chrpath \
-    libssl-dev \
-    libxft-dev \
-    libfreetype6 \
-    libfreetype6-dev \
-    libfontconfig1 \
-    libfontconfig1-dev \
-    libhdf5-serial-dev \
-    libpng-dev \
-    libzmq3-dev \
-    pkg-config \
-    software-properties-common \
-    rsync \
-    unzip \
-    zip \
-    g++ \
-    gcc \
-    libc6-dev \
-    gpg-agent \
-    apt-utils \
-    make \
-    wget \
-    git \
-    gettext \
-    tzdata \
-    gconf-service
-
-# Install & configure TensorFlow for C
-#
-# Big thank you to Qengineering for building this!
-# https://github.com/Qengineering/TensorFlow-Raspberry-Pi
-#
-ENV LD_LIBRARY_PATH /root/.local/lib:/usr/local/lib:/usr/lib:/lib
-ENV TF_CPP_MIN_LOG_LEVEL 0
-RUN curl -L \
-   "https://github.com/Qengineering/TensorFlow-Raspberry-Pi/blob/master/libtensorflow_1_15_2.tar.gz?raw=true" | \
-   tar -C "/usr" -xz
-RUN ldconfig
-
-# Install NodeJS
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get update && \
-    apt-get install nodejs && \
-    apt-get dist-upgrade && \
-    apt-get autoremove && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install and configure NodeJS Package Manager (npm)
-ENV NODE_ENV production
-RUN npm install --unsafe-perm=true --allow-root -g npm
-RUN npm config set cache ~/.cache/npm
-
-# Install Go
-ENV GOLANG_VERSION 1.16
-RUN set -eux; \
-	\
-	url="https://golang.org/dl/go${GOLANG_VERSION}.linux-armv6l.tar.gz"; \
-	wget -O go.tgz "$url"; \
-	echo "d1d9404b1dbd77afa2bdc70934e10fbfcf7d785c372efc29462bb7d83d0a32fd *go.tgz" | sha256sum -c -; \
-	tar -C /usr/local -xzf go.tgz; \
-	rm go.tgz; \
-	export PATH="/usr/local/go/bin:$PATH"; \
-	go version
-
-# Configure Go environment
-ENV GOPATH /go
-ENV GOBIN $GOPATH/bin
-ENV PATH $GOBIN:/usr/local/go/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV GO111MODULE on
-ENV CGO_CFLAGS "-g -O2 -Wno-return-local-addr"
-RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
-
-# Download TensorFlow model and test files
-RUN rm -rf /tmp/* && mkdir -p /tmp/photoprism
-RUN wget "https://dl.photoprism.org/tensorflow/nsfw.zip?${BUILD_TAG}" -O /tmp/photoprism/nsfw.zip
-RUN wget "https://dl.photoprism.org/tensorflow/nasnet.zip?${BUILD_TAG}" -O /tmp/photoprism/nasnet.zip
-
-# Set up project directory
-WORKDIR "/go/src/github.com/photoprism/photoprism"
-COPY . .
+from eee as build
 
 # Build PhotoPrism
+# ENV CC arm-linux-gnueabihf-gcc
+ENV CC arm-linux-gnueabi-gcc
 ENV NODE_OPTIONS "$NODE_OPTIONS --max-old-space-size=2048"
 RUN make dep build-js install
 
@@ -135,15 +37,31 @@ RUN apt-get update && apt-get upgrade && apt-get install -y --no-install-recomme
         exiftool \
         ffmpeg \
         ffmpegthumbnailer \
+        gcc-arm-linux-gnueabihf \
+        # libc6-armhf-cross \
+        # libc6-armel-cross \
+        # gcc-arm-linux-gnueabihf \
+        # g++-arm-linux-gnueabihf \
+        # gcc-arm-linux-gnueabi \
+        # g++-arm-linux-gnueabi \
         libavcodec-extra && \
     apt-get dist-upgrade && \
     apt-get autoremove && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN ln -sf /usr/arm-linux-gnueabihf/lib/ld-linux.so.3 /lib/ld-linux.so.3 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libdl.so.2 /lib/libdl.so.2 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libpthread.so.0 /lib/libpthread.so.0 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libc.so.6 /lib/libc.so.6 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libatomic.so.1 /lib/libatomic.so.1 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libm.so.6 /lib/libm.so.6 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libstdc++.so.6 /lib/libstdc++.so.6 && \
+    ln -sf /usr/arm-linux-gnueabihf/lib/libgcc_s.so.1 /lib/libgcc_s.so.1 
+
 # Copy dependencies
 COPY --from=build /go/bin/gosu /bin/gosu
-COPY --from=build /usr/lib/libtensorflow.so /usr/lib/libtensorflow.so
+COPY --from=build /usr/lib/libtensorflow.so /usr/lib/libtensorflow.so.1
 COPY --from=build /usr/lib/libtensorflow_framework.so /usr/lib/libtensorflow_framework.so
 COPY --chown=root:root --chmod=755 /docker/scripts/heif-convert.sh /usr/local/bin/heif-convert
 
